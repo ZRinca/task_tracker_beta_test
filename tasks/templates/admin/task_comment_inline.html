@@ -1,0 +1,441 @@
+{% load i18n admin_urls static admin_modify %}
+<style>
+  #{{ inline_admin_formset.formset.prefix }}-group .original-table {
+    display: none;
+  }
+
+  .messenger-chat {
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 12px;
+    background: var(--body-bg, #fff);
+    overflow: hidden;
+    margin-top: 10px;
+  }
+
+  .messenger-messages {
+    padding: 20px;
+    max-height: 400px;
+    overflow-y: auto;
+    background: var(--darkened-bg, #f9f9f9);
+    display: flex;
+    flex-direction: column;
+    gap: 14px; /* чуть больше расстояние между сообщениями */
+  }
+
+  .message-item {
+    display: flex;
+    width: 100%;
+  }
+  .message-item.own {
+    justify-content: flex-end;
+  }
+  .message-item.other {
+    justify-content: flex-start;
+  }
+
+  /* --- Светлая тема (по умолчанию) --- */
+  .message-bubble {
+    max-width: 75%;
+    padding: 10px 16px;
+    border-radius: 20px;
+    background: #f0f4ff;         /* светло-голубой, более мягкий */
+    border-bottom-left-radius: 5px;
+    word-wrap: break-word;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    color: #1e1e1e;             /* тёмный текст */
+  }
+
+  .message-item.own .message-bubble {
+    background: #d4edda;         /* светло-зелёный */
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 20px;
+  }
+
+  .message-author {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #0066cc;             /* яркий синий для автора */
+    margin-bottom: 4px;
+  }
+
+  .message-text {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin: 4px 0 6px 0;
+    color: #1e1e1e;             /* явно чёрный/тёмный */
+  }
+
+  .message-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    font-size: 0.7rem;
+    color: #6c757d;
+  }
+
+  .delete-message {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #b33;
+    font-size: 0.7rem;
+    padding: 0 0 0 8px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+  .delete-message:hover {
+    opacity: 1;
+    text-decoration: underline;
+  }
+
+  /* --- Тёмная тема --- */
+  .theme-dark .message-bubble {
+    background: #2d3a4e;         /* тёмно-синий */
+    color: #f0f0f0;             /* светлый текст */
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+
+  .theme-dark .message-item.own .message-bubble {
+    background: #1e3a2a;         /* тёмно-зелёный */
+  }
+
+  .theme-dark .message-author {
+    color: #66b5ff;             /* яркий голубой */
+  }
+
+  .theme-dark .message-text {
+    color: #f0f0f0;             /* белый/светлый */
+  }
+
+  .theme-dark .message-footer {
+    border-top-color: rgba(255,255,255,0.08);
+    color: #aaa;
+  }
+
+  .theme-dark .messenger-messages {
+    background: #1a1e24;
+  }
+
+  .theme-dark .messenger-chat {
+    border-color: #3a3f48;
+    background: #0f1115;
+  }
+
+  .theme-dark .message-input-area textarea {
+    background: #2a2e35;
+    border-color: #4a4f59;
+    color: #eee;
+  }
+
+  .theme-dark .message-input-area button {
+    background: #3a6ea5;
+  }
+  .theme-dark .message-input-area button:hover {
+    background: #2c5a8c;
+  }
+
+  /* --- Общие стили для поля ввода --- */
+  .message-input-area {
+    display: flex;
+    padding: 12px;
+    background: var(--body-bg, #fff);
+    border-top: 1px solid var(--border-color, #eaeaea);
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  .message-input-area textarea {
+    flex: 1;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 24px;
+    padding: 10px 18px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    resize: vertical;
+    background: var(--body-bg, white);
+    color: var(--body-fg, #333);
+    transition: border-color 0.2s;
+  }
+  .message-input-area textarea:focus {
+    border-color: #0066cc;
+    outline: none;
+  }
+
+  .message-input-area button {
+    background: var(--button-bg, #79aec8);
+    border: none;
+    color: white;
+    border-radius: 30px;
+    padding: 10px 24px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  .message-input-area button:hover {
+    background: var(--button-hover-bg, #417690);
+  }
+
+  .add-row {
+    display: none !important;
+  }
+</style>
+
+<div class="js-inline-admin-formset inline-group" id="{{ inline_admin_formset.formset.prefix }}-group"
+     data-inline-type="tabular"
+     data-inline-formset="{{ inline_admin_formset.inline_formset_data }}">
+  <div class="tabular inline-related {% if forloop.last %}last-related{% endif %}">
+    {{ inline_admin_formset.formset.management_form }}
+    <fieldset class="module {{ inline_admin_formset.classes }}">
+      <h2>{{ inline_admin_formset.opts.verbose_name_plural|capfirst }}</h2>
+
+      <div class="messenger-chat">
+        <div class="messenger-messages" id="msg-list-{{ inline_admin_formset.formset.prefix }}"></div>
+        <div class="message-input-area">
+          <textarea id="new-msg-{{ inline_admin_formset.formset.prefix }}" rows="2" placeholder="Напишите сообщение..."></textarea>
+          <button type="button" id="send-msg-{{ inline_admin_formset.formset.prefix }}">Отправить</button>
+        </div>
+      </div>
+
+      <table class="original-table" style="display: none;">
+        <tbody id="original-table-body-{{ inline_admin_formset.formset.prefix }}">
+          {% for inline_admin_form in inline_admin_formset %}
+            <tr class="form-row {% if forloop.last and inline_admin_formset.has_add_permission %}empty-form{% endif %}"
+                id="{{ inline_admin_formset.formset.prefix }}-{% if forloop.last and inline_admin_formset.has_add_permission %}empty{% else %}{{ forloop.counter0 }}{% endif %}"
+                data-commentator="{{ inline_admin_form.original.commentator.username|default:'' }}">
+              <td class="original">
+                {% if inline_admin_form.original or inline_admin_form.show_url %}<p>{% if inline_admin_form.original %}{{ inline_admin_form.original }}{% endif %}{% if inline_admin_form.show_url %}<a href="{{ inline_admin_form.absolute_url }}">{% translate "View on site" %}</a>{% endif %}</p>{% endif %}
+                {% if inline_admin_form.needs_explicit_pk_field %}{{ inline_admin_form.pk_field.field }}{% endif %}
+                {% if inline_admin_form.fk_field %}{{ inline_admin_form.fk_field.field }}{% endif %}
+              </td>
+              {% for fieldset in inline_admin_form %}
+                {% for line in fieldset %}
+                  {% for field in line %}
+                    <td class="field-{{ field.field.name }}{% if field.field.is_hidden %} hidden{% endif %}">
+                      {{ field.field }}
+                    </td>
+                  {% endfor %}
+                {% endfor %}
+              {% endfor %}
+              <td class="delete">
+                {% if inline_admin_form.original %}
+                  {{ inline_admin_form.deletion_field.field }}
+                {% else %}
+                  {# Для пустой формы создаём чекбокс вручную #}
+                  <input type="checkbox" name="{{ inline_admin_formset.formset.prefix }}-__prefix__-DELETE">
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </fieldset>
+  </div>
+</div>
+
+<script>
+(function() {
+    const prefix = "{{ inline_admin_formset.formset.prefix }}";
+    const totalFormsInput = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+    const originalTbody = document.getElementById(`original-table-body-${prefix}`);
+    const messagesContainer = document.getElementById(`msg-list-${prefix}`);
+    const sendBtn = document.getElementById(`send-msg-${prefix}`);
+    const textarea = document.getElementById(`new-msg-${prefix}`);
+    const mainForm = document.querySelector('form#task_form') || document.querySelector('form');
+
+    const currentUserName = "{{ request.user.username }}";
+
+    const pathParts = window.location.pathname.split('/');
+    let taskId = null;
+    for (let i = 0; i < pathParts.length; i++) {
+        if (pathParts[i] === 'task' && i + 1 < pathParts.length) {
+            const candidate = parseInt(pathParts[i + 1], 10);
+            if (!isNaN(candidate)) {
+                taskId = candidate;
+                break;
+            }
+        }
+    }
+    if (!taskId) {
+        const match = window.location.pathname.match(/\/(\d+)\/change\//);
+        if (match) taskId = parseInt(match[1], 10);
+    }
+
+    if (!sendBtn || !originalTbody) return;
+
+    function getFormattedTime() {
+        const now = new Date();
+        return `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function getDeleteCheckbox(row) {
+        return row.querySelector('td.delete input[type="checkbox"]');
+    }
+
+    function findTaskFkField(row) {
+        const inputs = row.querySelectorAll('input[type="hidden"]');
+        for (let inp of inputs) {
+            const name = inp.name;
+            // Ищем поля, которые могут содержать FK на Task
+            if (name && (name.includes('-task') || name.includes('-parent_task') || name.includes('-parent'))) {
+                return inp;
+            }
+        }
+        return null;
+    }
+
+    function loadExistingMessages() {
+        const rows = originalTbody.querySelectorAll('tr.form-row:not(.empty-form)');
+        rows.forEach(row => {
+            const deleteCheckbox = getDeleteCheckbox(row);
+            if (deleteCheckbox && deleteCheckbox.checked) return;
+            const textField = row.querySelector('.field-text textarea, .field-text input');
+            if (!textField) return;
+            const text = textField.value.trim();
+            if (text === "") return;
+
+            const commentator = row.getAttribute('data-commentator') || "Неизвестный";
+            const isOwn = (commentator === currentUserName);
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message-item ${isOwn ? 'own' : 'other'}`;
+            msgDiv.setAttribute('data-row-id', row.id);
+            msgDiv.innerHTML = `
+              <div class="message-bubble">
+                <div class="message-author">${escapeHtml(commentator)}</div>
+                <div class="message-text">${escapeHtml(text)}</div>
+                <div class="message-footer">
+                  <span>${getFormattedTime()}</span>
+                  <button type="button" class="delete-message" data-row-id="${row.id}">✖ Удалить</button>
+                </div>
+              </div>
+            `;
+            messagesContainer.appendChild(msgDiv);
+
+            const delBtn = msgDiv.querySelector('.delete-message');
+            delBtn.addEventListener('click', function(e) {
+                const targetRow = document.getElementById(this.getAttribute('data-row-id'));
+                if (targetRow) {
+                    const chk = getDeleteCheckbox(targetRow);
+                    if (chk) {
+                        chk.checked = true;
+                        if (mainForm) mainForm.submit();
+                    }
+                }
+            });
+        });
+    }
+
+    function addNewMessage(text) {
+        let newIndex = parseInt(totalFormsInput.value);
+        if (isNaN(newIndex)) newIndex = 0;
+
+        const emptyRow = originalTbody.querySelector('tr.empty-form');
+        if (!emptyRow) return;
+
+        const newRow = emptyRow.cloneNode(true);
+        newRow.classList.remove('empty-form');
+        newRow.style.display = '';
+        newRow.id = `${prefix}-${newIndex}`;
+        newRow.setAttribute('data-commentator', currentUserName);
+
+        newRow.querySelectorAll('input, textarea, select').forEach(el => {
+            if (el.name) el.name = el.name.replace(/__prefix__/g, newIndex);
+            if (el.id) el.id = el.id.replace(/__prefix__/g, newIndex);
+        });
+
+        const textField = newRow.querySelector('.field-text textarea, .field-text input');
+        if (textField) textField.value = text;
+
+        if (taskId) {
+            const fkField = findTaskFkField(newRow);
+            if (fkField) {
+                fkField.value = taskId;
+                console.log(`Установлен FK на задачу ${taskId} в поле ${fkField.name}`);
+            } else {
+                const allHidden = newRow.querySelectorAll('input[type="hidden"]');
+                for (let inp of allHidden) {
+                    if (inp.name && (inp.name.includes('task') || inp.name.includes('parent'))) {
+                        inp.value = taskId;
+                        console.log(`Установлен FK в поле ${inp.name}`);
+                        break;
+                    }
+                }
+            }
+        } else {
+            console.warn('Не удалось определить ID задачи из URL');
+        }
+
+        originalTbody.appendChild(newRow);
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message-item own';
+        msgDiv.setAttribute('data-row-id', newRow.id);
+        msgDiv.innerHTML = `
+          <div class="message-bubble">
+            <div class="message-author">${escapeHtml(currentUserName)}</div>
+            <div class="message-text">${escapeHtml(text)}</div>
+            <div class="message-footer">
+              <span>${getFormattedTime()}</span>
+              <button type="button" class="delete-message" data-row-id="${newRow.id}">✖ Удалить</button>
+            </div>
+          </div>
+        `;
+        messagesContainer.appendChild(msgDiv);
+        textarea.value = '';
+        totalFormsInput.value = newIndex + 1;
+
+        const delBtn = msgDiv.querySelector('.delete-message');
+        delBtn.addEventListener('click', function(e) {
+            const targetRow = document.getElementById(this.getAttribute('data-row-id'));
+            if (targetRow) {
+                const chk = getDeleteCheckbox(targetRow);
+                if (chk) {
+                    chk.checked = true;
+                    if (mainForm) mainForm.submit();
+                }
+            }
+        });
+    }
+
+    sendBtn.addEventListener('click', function() {
+        const text = textarea.value.trim();
+        if (text) addNewMessage(text);
+    });
+
+    loadExistingMessages();
+})();
+</script>
+
+<style>
+  .task-button {
+    display:inline-block;
+    padding:8px 15px;
+    background:#5cb85c;
+    color:#fff;
+    border-radius:4px;
+    text-decoration:none;
+    font-size:0.9em;
+  }
+  .task-button:hover {
+    background: #449d44;
+    color: #fff;
+  }
+</style>
+
+<div class="submit-row">
+  <a href="../../../taskworkend/execute/?task={{ original.pk }}" class="task-button" style="color: white">
+    Выполнить работу
+  </a>
+</div>

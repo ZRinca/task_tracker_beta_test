@@ -1,0 +1,14 @@
+db.sqlite3
+.idea/
+*.pyc
+/media
+cache/
+one_c_xml_packer/
+old_db.sqlite3
+user_data/
+last_db.json
+env/
+.devcontainer/
+.vscode/
+*.rdb
+/tmp

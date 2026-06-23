@@ -1,0 +1,9 @@
+{% extends "admin/widgets/related_widget_wrapper.html" %} {% load i18n static %}
+
+{% block links %}
+{% if can_delete_related %}
+<span style="cursor: pointer;" onclick="(function (e) { const wInput = document.getElementById('id_{{ name }}'); wInput.value = ''; django.jQuery(wInput.parentNode).children('strong').remove();})(event)">
+    <img src="{% static 'admin/img/icon-deletelink.svg' %}" alt="{% translate 'Delete' %}">
+</span>
+{% endif %}
+{% endblock %}
