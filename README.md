@@ -1,20 +1,18 @@
+# Task Tracker (Beta)
 
-## 🧪 Установка и запуск
+Веб-приложение для управления задачами на Django.
 
-```bash
-# Клонировать репозиторий
-git clone https://github.com/ZRinca/task_tracker_beta_test.git
-cd task_tracker_beta_test
+## Быстрый старт
 
-# Создать виртуальное окружение (рекомендуется)
-python -m venv venv
-source venv/bin/activate  # или venv\Scripts\activate (Windows)
+### Автоматическая настройка (рекомендуется)
 
-# Установить зависимости
-pip install -r requirements.txt  # если есть
+В корне проекта есть готовые скрипты для быстрого развёртывания:
 
-# Применить миграции
-python manage.py migrate
+| Скрипт | Описание |
+|--------|----------|
+| `_init.bat` / `_init.sh` | Создаёт виртуальное окружение, устанавливает зависимости, применяет миграции |
+| `_local_runserver.sh` | Запускает сервер разработки |
 
-# Запустить сервер
-python manage.py runserver
+**Windows:**
+```cmd
+_init.bat
