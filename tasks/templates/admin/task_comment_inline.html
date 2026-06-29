@@ -1,8 +1,11 @@
 {% load i18n admin_urls static admin_modify %}
 <style>
-  #{{ inline_admin_formset.formset.prefix }}-group .original-table {
-    display: none;
-  }
+  #{{ inline_admin_formset.formset.prefix }}-group 
+  .original-table {
+    position: absolute;
+    left: -100000px;
+    top: 0;
+}
 
   .messenger-chat {
     border: 1px solid var(--border-color, #ddd);
@@ -19,7 +22,7 @@
     background: var(--darkened-bg, #f9f9f9);
     display: flex;
     flex-direction: column;
-    gap: 14px; /* чуть больше расстояние между сообщениями */
+    gap: 14px;
   }
 
   .message-item {
@@ -38,15 +41,15 @@
     max-width: 75%;
     padding: 10px 16px;
     border-radius: 20px;
-    background: #f0f4ff;         /* светло-голубой, более мягкий */
+    background: #f0f4ff;
     border-bottom-left-radius: 5px;
     word-wrap: break-word;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    color: #1e1e1e;             /* тёмный текст */
+    color: #1e1e1e;
   }
 
   .message-item.own .message-bubble {
-    background: #d4edda;         /* светло-зелёный */
+    background: #d4edda;
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 20px;
   }
@@ -54,7 +57,7 @@
   .message-author {
     font-size: 0.7rem;
     font-weight: 600;
-    color: #0066cc;             /* яркий синий для автора */
+    color: #0066cc;
     margin-bottom: 4px;
   }
 
@@ -62,7 +65,7 @@
     font-size: 0.9rem;
     line-height: 1.5;
     margin: 4px 0 6px 0;
-    color: #1e1e1e;             /* явно чёрный/тёмный */
+    color: #1e1e1e;
   }
 
   .message-footer {
@@ -91,23 +94,32 @@
     text-decoration: underline;
   }
 
+  /* --- Визуальное выделение при пометке на удаление --- */
+  .message-item.marked-for-deletion {
+    opacity: 0.4;
+    transition: opacity 0.2s;
+  }
+  .message-item.marked-for-deletion .message-bubble {
+    text-decoration: line-through;
+  }
+
   /* --- Тёмная тема --- */
   .theme-dark .message-bubble {
-    background: #2d3a4e;         /* тёмно-синий */
-    color: #f0f0f0;             /* светлый текст */
+    background: #2d3a4e;
+    color: #f0f0f0;
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
   }
 
   .theme-dark .message-item.own .message-bubble {
-    background: #1e3a2a;         /* тёмно-зелёный */
+    background: #1e3a2a;
   }
 
   .theme-dark .message-author {
-    color: #66b5ff;             /* яркий голубой */
+    color: #66b5ff;
   }
 
   .theme-dark .message-text {
-    color: #f0f0f0;             /* белый/светлый */
+    color: #f0f0f0;
   }
 
   .theme-dark .message-footer {
@@ -178,7 +190,7 @@
     background: var(--button-hover-bg, #417690);
   }
 
-  .add-row {
+  #{{ inline_admin_formset.formset.prefix }}-group table.original-table .add-row {
     display: none !important;
   }
 </style>
@@ -199,8 +211,8 @@
         </div>
       </div>
 
-      <table class="original-table" style="display: none;">
-        <tbody id="original-table-body-{{ inline_admin_formset.formset.prefix }}">
+      <table class="original-table">
+          <tbody id="original-table-body-{{ inline_admin_formset.formset.prefix }}">
           {% for inline_admin_form in inline_admin_formset %}
             <tr class="form-row {% if forloop.last and inline_admin_formset.has_add_permission %}empty-form{% endif %}"
                 id="{{ inline_admin_formset.formset.prefix }}-{% if forloop.last and inline_admin_formset.has_add_permission %}empty{% else %}{{ forloop.counter0 }}{% endif %}"
@@ -236,188 +248,168 @@
 </div>
 
 <script>
-(function() {
-    const prefix = "{{ inline_admin_formset.formset.prefix }}";
-    const totalFormsInput = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
-    const originalTbody = document.getElementById(`original-table-body-${prefix}`);
-    const messagesContainer = document.getElementById(`msg-list-${prefix}`);
-    const sendBtn = document.getElementById(`send-msg-${prefix}`);
-    const textarea = document.getElementById(`new-msg-${prefix}`);
-    const mainForm = document.querySelector('form#task_form') || document.querySelector('form');
+  (function() {
+      const prefix = "{{ inline_admin_formset.formset.prefix }}";
+      const totalForms = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+      const originalTbody = document.getElementById(`original-table-body-${prefix}`);
+      const msgContainer = document.getElementById(`msg-list-${prefix}`);
+      const sendBtn = document.getElementById(`send-msg-${prefix}`);
+      const textarea = document.getElementById(`new-msg-${prefix}`);
+      
+      const currentUser = "{{ request.user.username }}";
+      let taskId = null;
+      const match = window.location.pathname.match(/\/(\d+)\/change\//);
+      if (match) taskId = parseInt(match[1], 10);
 
-    const currentUserName = "{{ request.user.username }}";
+      const escapeHtml = (str) => str ? str.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'})[m] || m) : '';
+      const getDeleteCheckbox = (row) => row.querySelector('td.delete input[type="checkbox"]');
+      const getTextField = (row) => row.querySelector('.field-text textarea, .field-text input');
 
-    const pathParts = window.location.pathname.split('/');
-    let taskId = null;
-    for (let i = 0; i < pathParts.length; i++) {
-        if (pathParts[i] === 'task' && i + 1 < pathParts.length) {
-            const candidate = parseInt(pathParts[i + 1], 10);
-            if (!isNaN(candidate)) {
-                taskId = candidate;
-                break;
-            }
-        }
-    }
-    if (!taskId) {
-        const match = window.location.pathname.match(/\/(\d+)\/change\//);
-        if (match) taskId = parseInt(match[1], 10);
-    }
-
-    if (!sendBtn || !originalTbody) return;
-
-    function getFormattedTime() {
-        const now = new Date();
-        return `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
-            if (m === '&') return '&amp;';
-            if (m === '<') return '&lt;';
-            if (m === '>') return '&gt;';
-            return m;
-        });
-    }
-
-    function getDeleteCheckbox(row) {
-        return row.querySelector('td.delete input[type="checkbox"]');
-    }
-
-    function findTaskFkField(row) {
-        const inputs = row.querySelectorAll('input[type="hidden"]');
-        for (let inp of inputs) {
-            const name = inp.name;
-            // Ищем поля, которые могут содержать FK на Task
-            if (name && (name.includes('-task') || name.includes('-parent_task') || name.includes('-parent'))) {
-                return inp;
-            }
-        }
-        return null;
-    }
-
-    function loadExistingMessages() {
-        const rows = originalTbody.querySelectorAll('tr.form-row:not(.empty-form)');
-        rows.forEach(row => {
-            const deleteCheckbox = getDeleteCheckbox(row);
-            if (deleteCheckbox && deleteCheckbox.checked) return;
-            const textField = row.querySelector('.field-text textarea, .field-text input');
-            if (!textField) return;
-            const text = textField.value.trim();
-            if (text === "") return;
-
-            const commentator = row.getAttribute('data-commentator') || "Неизвестный";
-            const isOwn = (commentator === currentUserName);
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `message-item ${isOwn ? 'own' : 'other'}`;
-            msgDiv.setAttribute('data-row-id', row.id);
-            msgDiv.innerHTML = `
+      function createMessageElement(text, author, isOwn, rowId) {
+          const div = document.createElement('div');
+          div.className = `message-item ${isOwn ? 'own' : 'other'}`;
+          div.dataset.rowId = rowId;
+          const time = new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+          div.innerHTML = `
               <div class="message-bubble">
-                <div class="message-author">${escapeHtml(commentator)}</div>
-                <div class="message-text">${escapeHtml(text)}</div>
-                <div class="message-footer">
-                  <span>${getFormattedTime()}</span>
-                  <button type="button" class="delete-message" data-row-id="${row.id}">✖ Удалить</button>
-                </div>
+                  <div class="message-author">${escapeHtml(author)}</div>
+                  <div class="message-text">${escapeHtml(text)}</div>
+                  <div class="message-footer">
+<!--                      <span>${time}</span>-->
+                      <span></span>
+                      <button type="button" class="delete-message" data-row-id="${rowId}">✖ Удалить</button>
+                  </div>
               </div>
-            `;
-            messagesContainer.appendChild(msgDiv);
+          `;
+          return div;
+      }
 
-            const delBtn = msgDiv.querySelector('.delete-message');
-            delBtn.addEventListener('click', function(e) {
-                const targetRow = document.getElementById(this.getAttribute('data-row-id'));
-                if (targetRow) {
-                    const chk = getDeleteCheckbox(targetRow);
-                    if (chk) {
-                        chk.checked = true;
-                        if (mainForm) mainForm.submit();
-                    }
-                }
-            });
-        });
-    }
+      function handleDeleteClick(e) {
+          const btn = e.target.closest('.delete-message');
+          if (!btn) return;
 
-    function addNewMessage(text) {
-        let newIndex = parseInt(totalFormsInput.value);
-        if (isNaN(newIndex)) newIndex = 0;
+          const rowId = btn.dataset.rowId;
+          const row = document.getElementById(rowId);
+          if (!row) return;
 
-        const emptyRow = originalTbody.querySelector('tr.empty-form');
-        if (!emptyRow) return;
+          const chk = getDeleteCheckbox(row);
+          if (!chk) return;
 
-        const newRow = emptyRow.cloneNode(true);
-        newRow.classList.remove('empty-form');
-        newRow.style.display = '';
-        newRow.id = `${prefix}-${newIndex}`;
-        newRow.setAttribute('data-commentator', currentUserName);
+          chk.click();
+          console.log(chk.checked);
 
-        newRow.querySelectorAll('input, textarea, select').forEach(el => {
-            if (el.name) el.name = el.name.replace(/__prefix__/g, newIndex);
-            if (el.id) el.id = el.id.replace(/__prefix__/g, newIndex);
-        });
+          e.preventDefault();
+      }
 
-        const textField = newRow.querySelector('.field-text textarea, .field-text input');
-        if (textField) textField.value = text;
+      originalTbody.addEventListener('change', function(e) {
 
-        if (taskId) {
-            const fkField = findTaskFkField(newRow);
-            if (fkField) {
-                fkField.value = taskId;
-                console.log(`Установлен FK на задачу ${taskId} в поле ${fkField.name}`);
-            } else {
-                const allHidden = newRow.querySelectorAll('input[type="hidden"]');
-                for (let inp of allHidden) {
-                    if (inp.name && (inp.name.includes('task') || inp.name.includes('parent'))) {
-                        inp.value = taskId;
-                        console.log(`Установлен FK в поле ${inp.name}`);
-                        break;
-                    }
-                }
+        if (!e.target.matches('td.delete input[type="checkbox"]'))
+            return;
+
+        const chk = e.target;
+        const row = chk.closest('tr');
+
+        const textField = getTextField(row);
+
+        if (chk.checked) {
+
+            if (!row.dataset.originalText) {
+                row.dataset.originalText = textField ? textField.value : '';
             }
+
+            if (textField)
+                textField.value = ' ';
+
         } else {
-            console.warn('Не удалось определить ID задачи из URL');
+
+            if (textField && row.dataset.originalText !== undefined) {
+                textField.value = row.dataset.originalText;
+                delete row.dataset.originalText;
+            }
+
         }
 
-        originalTbody.appendChild(newRow);
+        const msgItem = msgContainer.querySelector(`.message-item[data-row-id="${row.id}"]`);
 
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message-item own';
-        msgDiv.setAttribute('data-row-id', newRow.id);
-        msgDiv.innerHTML = `
-          <div class="message-bubble">
-            <div class="message-author">${escapeHtml(currentUserName)}</div>
-            <div class="message-text">${escapeHtml(text)}</div>
-            <div class="message-footer">
-              <span>${getFormattedTime()}</span>
-              <button type="button" class="delete-message" data-row-id="${newRow.id}">✖ Удалить</button>
-            </div>
-          </div>
-        `;
-        messagesContainer.appendChild(msgDiv);
-        textarea.value = '';
-        totalFormsInput.value = newIndex + 1;
+        if (msgItem) {
+            msgItem.classList.toggle('marked-for-deletion', chk.checked);
+        }
 
-        const delBtn = msgDiv.querySelector('.delete-message');
-        delBtn.addEventListener('click', function(e) {
-            const targetRow = document.getElementById(this.getAttribute('data-row-id'));
-            if (targetRow) {
-                const chk = getDeleteCheckbox(targetRow);
-                if (chk) {
-                    chk.checked = true;
-                    if (mainForm) mainForm.submit();
-                }
-            }
-        });
-    }
-
-    sendBtn.addEventListener('click', function() {
-        const text = textarea.value.trim();
-        if (text) addNewMessage(text);
     });
 
-    loadExistingMessages();
-})();
+      function loadExistingMessages() {
+          const rows = originalTbody.querySelectorAll('tr.form-row:not(.empty-form)');
+          rows.forEach(row => {
+              const chk = getDeleteCheckbox(row);
+              if (chk && chk.checked) return;
+              const textField = getTextField(row);
+              if (!textField) return;
+              const text = textField.value.trim();
+              if (!text) return;
+              const author = row.dataset.commentator || 'Неизвестный';
+              const isOwn = (author === currentUser);
+              const msgEl = createMessageElement(text, author, isOwn, row.id);
+              msgContainer.appendChild(msgEl);
+          });
+      }
+
+      function addNewMessage(text) {
+          let newIndex = parseInt(totalForms.value) || 0;
+          const emptyRow = originalTbody.querySelector('tr.empty-form');
+          if (!emptyRow) return;
+
+          const newRow = emptyRow.cloneNode(true);
+          newRow.classList.remove('empty-form');
+          newRow.style.display = '';
+          newRow.id = `${prefix}-${newIndex}`;
+          newRow.dataset.commentator = currentUser;
+
+          newRow.querySelectorAll('input, textarea, select').forEach(el => {
+              if (el.name) el.name = el.name.replace(/__prefix__/g, newIndex);
+              if (el.id) el.id = el.id.replace(/__prefix__/g, newIndex);
+          });
+
+          const textField = getTextField(newRow);
+          if (textField) textField.value = text;
+
+          if (taskId) {
+              const fkCandidates = newRow.querySelectorAll('input[type="hidden"]');
+              for (let inp of fkCandidates) {
+                  if (inp.name && (inp.name.includes('task') || inp.name.includes('parent'))) {
+                      inp.value = taskId;
+                      break;
+                  }
+              }
+          }
+
+          originalTbody.appendChild(newRow);
+          totalForms.value = newIndex + 1;
+
+          const msgEl = createMessageElement(text, currentUser, true, newRow.id);
+          msgContainer.appendChild(msgEl);
+          textarea.value = '';
+          msgContainer.scrollTop = msgContainer.scrollHeight;
+      }
+
+      sendBtn.addEventListener('click', function() {
+          const text = textarea.value.trim();
+          if (text) addNewMessage(text);
+      });
+
+      // Добавляем отправку по Ctrl+Enter или Enter (но не Shift+Enter)
+      textarea.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendBtn.click();
+          }
+      });
+
+      msgContainer.addEventListener('click', handleDeleteClick);
+      loadExistingMessages();
+  })();
 </script>
 
+<!-- подсчет времени -->
 <style>
   .task-button {
     display:inline-block;
@@ -433,6 +425,46 @@
     color: #fff;
   }
 </style>
+
+<span id="recalc_text_order" style="padding-left: 10px; color: red;"></span>
+
+<div class="submit-row">
+  <div>
+    <p>Общее кол-во времени - <span id="all_time">0</span></p>
+    <p>------------------------------------------</p>
+    <p>Время затрачено в текущем месяце - <span id="time_current_month">0</span></p>
+    <p>------------------------------------------</p>
+    <p>Время затрачено в прошлом месяце - <span id="time_past_month">0</span></p>
+  </div>
+</div>
+
+<script>
+const recalcText = document.getElementById('recalc_text_order');
+document.addEventListener('DOMContentLoaded', function() {
+    
+    let counter = 0;
+    const symbols = ['\\', '|', '/', '-']
+    let interval = setInterval(() => {
+        recalcText.innerHTML = 'Высчитываем время ' + symbols[counter];
+        counter = counter > 2 ? 0 : counter + 1;
+    }, 150);
+
+    fetch("../../../taskworkend/get_total_time_spent/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+      body: JSON.stringify({
+        "id_task": "{{ original.pk }}",
+      })
+    }).then(response => response.json()).then(data => {
+      document.getElementById('all_time').innerText = data.all_time;
+      document.getElementById('time_current_month').innerText = data.time_current_month;
+      document.getElementById('time_past_month').innerText = data.time_past_month;
+
+      clearInterval(interval);
+      document.getElementById('recalc_text_order').innerText = '';
+    });
+});
+</script>
 
 <div class="submit-row">
   <a href="../../../taskworkend/execute/?task={{ original.pk }}" class="task-button" style="color: white">

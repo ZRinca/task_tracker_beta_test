@@ -22,7 +22,7 @@ class TaskTag(models.Model):
     type = models.ForeignKey(TaskTagType, on_delete=models.CASCADE)
 
     def __str__(self):
-        return f'{self.name}'
+        return f'{self.type} | {self.name}'
 
 # Create your models here.
 class Task(models.Model):
